@@ -15,7 +15,6 @@ resource "aws_vpc" "walter-application-deployment" {
 
 resource "aws_internet_gateway" "walter-ig" {
     vpc_id = "${aws_vpc.walter-application-deployment.id}"
-  
   tags = {
     Name = "walter-ig"
   }
@@ -31,14 +30,33 @@ resource "aws_route_table" "walter-rt" {
 }
 
 
+module "db-tier" {
+  name = "walter-database"
+  source = "./modules/db-tier"
+  vpc_id = "${aws_vpc.walter-application-deployment.id}"
+  route_table_id = "${aws_vpc.walter-application-deployment.main_route_table_id}"
+  cidr_block = "10.4.1.0/24"
+  user_data = templatefile("./scripts/db_user_data.sh", {})
+  ami_id = "ami-0d17099f9a1843ab6"
+  map_public_ip_on_launch = false
+
+  ingress = [{
+    from_port = 27017
+    to_port = 27017
+    protocol = "tcp"
+    cidr_blocks = "${module.application-tier.subnet_cidr_block}"
+  }]
+}
+
+
 module "application-tier" {
   name = "walter-app"
   source = "./modules/application-tier"
   vpc_id = "${aws_vpc.walter-application-deployment.id}"
   route_table_id = "${aws_route_table.walter-rt.id}"
   cidr_block = "10.4.0.0/24"
-  user_data = templatefile("./scripts/app_user_data.sh", {})
-  ami_id = "ami-046173580183b4d6f"
+  user_data = templatefile("./scripts/app_user_data.sh", {mongodb_ip = module.db-tier.private_ip})
+  ami_id = "ami-0d303287a96a6816c"
   map_public_ip_on_launch = true
 
   ingress = [{
